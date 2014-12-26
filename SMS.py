@@ -3,10 +3,22 @@
 #imports
 import Tkinter as tk
 import tkMessageBox as mb
+import tkFileDialog as fd
+import ttk as ttk
 import decimal
 import shelve
+import time
+import fpdf
 
 class Product(object):
+	''' Product object containing:
+		-name 
+		-price
+		-idNumber
+		-quantity
+		-unit / measurement unit
+		-case / how much of that unit is in 1 case  
+		'''
 	def __init__(self, name = '?',price = 0.00,vendor = '?',idNumber = 0, quantity = 0,unit = '', case = 0 ):
 		self.name = name
 		self._price = price
@@ -61,7 +73,7 @@ class Vendor(object):
 		return self._name
 
 	@name.setter
-	def nam (self, value):
+	def name(self, value):
 		self._name = value
 
 	@property
@@ -101,67 +113,45 @@ class Main(tk.Frame):
 		self.master.maxsize(width=600, height = 400)
 		self.pack()
 
-		#keeping track of total products in the system
-		self.totalProducts = 0
-
 		#main display
 		self.mainDisplay = tk.Frame(self)
-		self.mainDisplay.pack()
 
-		#main display buttons
-		tk.Button(self.mainDisplay, text='Quit', command = self.quit).grid(row=0,column = 3)
-		tk.Button(self.mainDisplay, text='Products', command = lambda : self.packer(self.mainDisplay, self.productDisplay) ).grid(row=0,column = 0)
-		tk.Button(self.mainDisplay, text='Orders', command = lambda : self.packer(self.mainDisplay, self.orderDisplay) ).grid(row=0,column = 1)
-		tk.Button(self.mainDisplay, text='Reports', command = lambda: self.packer(self.mainDisplay, self.reportsDisplay) ).grid(row=0,column = 2)
+		self.main()
 
 		#PRODUCT VARS
 		self.productDisplay = tk.Frame(self)
 		self.addProductDisplay = tk.Frame(self)
 		self.editProductDisplay =tk.Frame(self)
-		self.editProductDisplay1 = tk.Frame(self.editProductDisplay)
-		self.editProductDisplay2 = tk.Frame(self.editProductDisplay)
 		self.viewDisplay = tk.Frame(self)
-		self.viewDisplay2 = tk.Frame(self)
 		self.deleteView = tk.Frame(self)
 		self.queryProductID = tk.IntVar()
 		self.productOptions = ('ID','Name','Price','Unit','Quantity','Case')
 		self.productVars = dict([('id',tk.IntVar()),('name',tk.StringVar()),('price',tk.DoubleVar()),('unit',tk.StringVar()),('quantity',tk.IntVar()),('case',tk.IntVar())])
 
-		#PRODUCTS BUTTONS
-		tk.Button(self.productDisplay, text='Add Product', command = self.addProduct ).grid(row=0,column = 0)
-		tk.Button(self.productDisplay, text='Edit Product', command = self.editProduct ).grid(row=0,column = 1)
-		tk.Button(self.productDisplay, text='Delete Product', command = self.deleteProduct ).grid(row=0,column = 2)
-		tk.Button(self.productDisplay, text='View Product', command = self.viewProduct ).grid(row=0,column = 3)
-		tk.Button(self.productDisplay, text='Back', command = lambda : self.packer(self.productDisplay,self.mainDisplay) ).grid(row=0,column = 4)
 
 		#ORDER VARS
 		self.orderDisplay = tk.Frame(self)
 		self.addOrderDisplay = tk.Frame(self)
-		self.orderMiniDisplay = tk.Frame(self.addOrderDisplay)
-		self.orderMiniDisplay2 = tk.Frame(self.addOrderDisplay)
 		self.viewOrderDisplay = tk.Frame(self)
-		self.viewOrderDisplay1 = tk.Frame(self.viewOrderDisplay)
-		self.viewOrderDisplay3 = tk.Frame(self.viewOrderDisplay)
-		self.viewOrderDisplay2 = tk.Frame(self.viewOrderDisplay)
 		self.orderHistoryDisplay = tk.Frame(self)
-		self.OrderVars = dict([('vendor', tk.StringVar()),('id',tk.StringVar()),('date',tk.StringVar())])
+		self.makeOrderDisplay = tk.Frame(self)
+		self.OrderVars = dict([('vendor', tk.StringVar()),('id',tk.IntVar()),('date',tk.StringVar())])
 		self.OrderOptions = ('id','vendor','products','date')
-		self.orderID = tk.IntVar()
+		self.viewOrderDate = tk.StringVar()
+		self.viewOrderMode = tk.IntVar()
 
-		#ORDER BUTTONS
-		tk.Button(self.orderDisplay, text='Add Order', command = self.addOrder ).grid(row=0,column = 0)
-		tk.Button(self.orderDisplay, text='View Order', command = self.viewOrder ).grid(row=0,column = 1)
-		tk.Button(self.orderDisplay, text='Order History', command = self.orderHistory ).grid(row=0,column = 2)
-		tk.Button(self.orderDisplay, text='Back', command = lambda : self.packer(self.orderDisplay,self.mainDisplay) ).grid(row=0,column = 3)
+
+		self.vendorDisplay = tk.Frame(self)
+		self.addVendorDisplay = tk.Frame(self)
+		self.deleteVendorDisplay = tk.Frame(self)
+		self.viewVendorDisplay = tk.Frame(self)
+		self.viewVendorAll = tk.Frame(self)
+		self.vendorVars = dict([('name',tk.StringVar()),('address',tk.StringVar()),('id',tk.IntVar())])
+		self.vendorID = tk.IntVar()
 
 		#REPORTS VARS
 		self.reportsDisplay = tk.Frame(self)
 		self.inventoryDisplay = tk.Frame(self)
-
-		#REPORTS BUTTONS
-		tk.Button(self.reportsDisplay, text='Iventory', command = self.inventoryShow ).grid(row=0,column = 0)
-		tk.Button(self.reportsDisplay, text='Product History', command = lambda : mb.showwarning('Not Implemented','Service not implemented yet') ).grid(row=0,column = 1)
-		tk.Button(self.reportsDisplay, text='Back', command = lambda : self.packer(self.reportsDisplay,self.mainDisplay) ).grid(row=0,column = 2)
 
 	''' FUNTIONALITIES '''
 
@@ -170,42 +160,73 @@ class Main(tk.Frame):
 		if database:
 			self.products = database['products']
 			self.orders = database['orders']
+			self.vendors = database['vendors']
+			self.makeOrders = database['makeOrders']
 		else:
 			self.products = {}
 			self.orders = {}
+			self.makeOrders = {}
+			self.vendors = {}
 		database.close()
 
 	def quit(self):
 		database = shelve.open(self.filename)
 		database['products'] = self.products
 		database['orders'] = self.orders
+		database['vendors'] = self.vendors
+		database['makeOrders'] = self.makeOrders
 		database.close()
 		self.master.destroy()
 
-	def packer(self, unpacked, packed,third = None,option = None):
+	def packer(self, unpacked, packed = None,third = None,option = None, orderID = None):
 		unpacked.pack_forget()
-		packed.pack()
-		if third:
-			third.pack_forget()
+		for child in unpacked.winfo_children():
+			child.destroy()
+		if packed:
+			if orderID:
+				packed(orderID)
+			else:
+				packed()
 		if option:
-			self.clearVars()
+			self.clearVars(option)
 
-	def clearVars(self):
-		for key in self.productVars:
-			self.productVars[key].set('')
+	def clearVars(self,option):
+		if option == 1:
+			for key in self.productVars:
+				self.productVars[key].set('')
+		if option == 2:
+			for key in self.vendorVars:
+				self.vendorVars[key].set('')
+		if option == 3:
+			for key in self.OrderVars:
+				self.OrderVars[key].set('')
+
+	def main(self):
+		self.mainDisplay.pack()
+		tk.Button(self.mainDisplay, text='Quit', command = self.quit).grid(row=0,column = 3)
+		tk.Button(self.mainDisplay, text='Products', command = lambda: self.packer(self.mainDisplay, self.productView) ).grid(row=0,column = 0)
+		tk.Button(self.mainDisplay, text='Orders', command = lambda : self.packer(self.mainDisplay,self.orderMain)).grid(row=0,column = 1)
+		tk.Button(self.mainDisplay, text='Reports', command = lambda: self.packer(self.mainDisplay, self.mainReports) ).grid(row=0,column = 2)
 
 	''' PRODUCTS '''
 
+	def productView(self):
+		self.productDisplay.pack()
+		tk.Button(self.productDisplay, text='Add Product', command = lambda : self.packer(self.productDisplay, self.addProduct) ).grid(row=0,column = 0)
+		tk.Button(self.productDisplay, text='Edit Product', command = lambda: self.packer(self.productDisplay, self.editProduct) ).grid(row=0,column = 1)
+		tk.Button(self.productDisplay, text='Delete Product', command = lambda : self.packer(self.productDisplay,self.deleteProduct)  ).grid(row=0,column = 2)
+		tk.Button(self.productDisplay, text='View Product', command = lambda: self.packer(self.productDisplay,self.viewProduct) ).grid(row=0,column = 3)
+		tk.Button(self.productDisplay, text='Back', command = lambda : self.packer(self.productDisplay,self.main) ).grid(row=0,column = 4)
+
 	def addProduct(self):
-		self.packer(self.productDisplay,self.addProductDisplay)
+		self.addProductDisplay.pack()
 		tk.Button(self.addProductDisplay, text='Save', command = self.saveProduct ).grid(row=len(self.productOptions),column = 1)
-		tk.Button(self.addProductDisplay, text='Cancel', command = lambda : self.packer(self.addProductDisplay,self.productDisplay) ).grid(row=len(self.productOptions),column = 0)
+		tk.Button(self.addProductDisplay, text='Cancel', command = lambda : self.packer(self.addProductDisplay,self.productView) ).grid(row=len(self.productOptions),column = 0)
 		for i in xrange(len(self.productOptions)):
 			tk.Label(self.addProductDisplay, text = self.productOptions[i]).grid(row=i, column=0)
 			tk.Entry(self.addProductDisplay, textvariable = self.productVars[self.productOptions[i].lower()]).grid(row=i,column = 1)
 
 	def saveProduct(self):
-		self.totalProducts +=1
 		try:
 			p = Product()
 			p.name = self.productVars['name'].get()
@@ -214,13 +235,13 @@ class Main(tk.Frame):
 			p.quantity = self.productVars['quantity'].get()
 			p.unit = self.productVars['unit'].get()
 			p.case = self.productVars['case'].get()
-			self.clearVars()
+			self.clearVars(1)
 			if p.idNumber in self.products.keys():
 				mb.showwarning('ID taken','There is a product with that ID')
 				
 			else:
 				self.products[p.idNumber] = p
-				self.packer(self.addProductDisplay,self.productDisplay)
+				self.packer(self.addProductDisplay,self.productView)
 		except ValueError: 
 			mb.showwarning('Error','Price,ID,Quantity and Units per Case have to be numbers')
 
@@ -230,16 +251,18 @@ class Main(tk.Frame):
 		product.price = self.productVars['price'].get()
 		product.unit = self.productVars['unit'].get()
 		product.case = self.productVars['case'].get()
-		self.clearVars()
-		self.editProductDisplay2.pack_forget()
+		self.clearVars(1)
+		self.packer(self.editProductDisplay, self.productView)
 
 
 	def editProduct(self):
-		self.packer(self.productDisplay, self.editProductDisplay)
+		self.editProductDisplay1 = tk.Frame(self.editProductDisplay)
+		self.editProductDisplay2 = tk.Frame(self.editProductDisplay)
+		self.editProductDisplay.pack()
 		self.editProductDisplay1.pack()
 		tk.Entry(self.editProductDisplay1,textvariable = self.queryProductID).grid(row=0,columnspan=2)
 		tk.Button(self.editProductDisplay1, text='Search', command = self.searchID ).grid(row=1,column = 1)
-		tk.Button(self.editProductDisplay1, text='Cancel', command = lambda : self.packer(self.editProductDisplay,self.productDisplay,self.editProductDisplay2,1) ).grid(row=1,column = 0)
+		tk.Button(self.editProductDisplay1, text='Cancel', command = lambda : self.packer(self.editProductDisplay,self.productView,option = 1) ).grid(row=1,column = 0)
 
 	def searchID(self):
 		try:
@@ -265,21 +288,24 @@ class Main(tk.Frame):
 			mb.showwarning('Not Found', 'No such product in the database')
 
 	def viewProduct(self):
-		self.packer(self.productDisplay,self.viewDisplay)
-		self.queryProductID.set(0)
+		self.viewDisplay2 = tk.Frame(self.viewDisplay)
+		self.viewDisplay1 = tk.Frame(self.viewDisplay)
+		self.viewDisplay.pack()
+		self.viewDisplay1.pack()
 		self.viewDisplay2.pack()
+		self.queryProductID.set(0)
 		self.idNumber = tk.Label(self.viewDisplay2, textvariable = self.productVars['id'],width = 5)
 		self.name = tk.Label(self.viewDisplay2, textvariable = self.productVars['name'],width = 20)
 		self.price = tk.Label(self.viewDisplay2,textvariable=self.productVars['price'],width = 15)
 		self.unit = tk.Label(self.viewDisplay2,textvariable = self.productVars['unit'],width = 5)
 		self.quantity = tk.Label(self.viewDisplay2,textvariable = self.productVars['quantity'],width = 15)
 		self.case = tk.Label(self.viewDisplay2,textvariable=self.productVars['case'],width = 10)
-		tk.Entry(self.viewDisplay, textvariable = self.queryProductID).grid(row=0,columnspan=2)
-		tk.Button(self.viewDisplay,text = 'Search',command = self.searchViewProduct).grid(row=1,column=1)
-		tk.Button(self.viewDisplay,text= 'Cancel',command = lambda: self.packer(self.viewDisplay, self.productDisplay, self.viewDisplay2, 1)).grid(row=1,column=0)
+		tk.Entry(self.viewDisplay1, textvariable = self.queryProductID).grid(row=0,columnspan=2)
+		tk.Button(self.viewDisplay1,text = 'Search',command = self.searchViewProduct).grid(row=1,column=1)
+		tk.Button(self.viewDisplay1,text= 'Cancel',command = lambda: self.packer(self.viewDisplay, self.productView, option=1)).grid(row=1,column=0)
+
 
 	def searchViewProduct(self):
-
 		try:
 			product = self.products[self.queryProductID.get()]
 			for i in xrange(len(self.productOptions)):
@@ -301,25 +327,34 @@ class Main(tk.Frame):
 
 
 	def deleteProduct(self):
-		self.packer(self.productDisplay, self.deleteView)
+		self.deleteView.pack()
 		self.queryProductID.set(0)
 		tk.Entry(self.deleteView, textvariable = self.queryProductID).grid(row=0,columnspan=2)
 		tk.Button(self.deleteView, text = 'Delete', command = lambda: self.deleteProductID(self.queryProductID.get())).grid(row=1,column=1)
-		tk.Button(self.deleteView, text = 'Cancel',command = lambda: self.packer(self.deleteView, self.productDisplay)).grid(row=1,column=0)
+		tk.Button(self.deleteView, text = 'Cancel',command = lambda: self.packer(self.deleteView, self.productView)).grid(row=1,column=0)
 
 	def deleteProductID(self,key):
 		try:
 			del self.products[key]
-			self.packer(self.deleteView, self.productDisplay)
+			self.packer(self.deleteView, self.productView)
 		except KeyError:
 			mb.showwarning('Not Found', 'No such product in the database')
 
 
 	''' ORDERS '''
+	def orderMain(self):
+		self.orderDisplay.pack()
+		tk.Button(self.orderDisplay, text='Incoming Order', command = lambda : self.packer(self.orderDisplay, self.addOrder)).grid(row=0,column = 0)
+		tk.Button(self.orderDisplay, text='View Order', command = lambda : self.packer(self.orderDisplay,self.viewOrder) ).grid(row=0,column = 1)
+		tk.Button(self.orderDisplay,text = 'Outgoing Order',command = lambda: self.packer(self.orderDisplay,self.makeOrder)).grid(row=0,column = 2)
+		tk.Button(self.orderDisplay, text='Order History', command = lambda : self.packer(self.orderDisplay,self.orderHistory) ).grid(row=0,column = 3)
+		tk.Button(self.orderDisplay,text = 'Vendors',command = lambda: self.packer(self.orderDisplay,self.vendorShow)).grid(row=0,column=4)
+		tk.Button(self.orderDisplay, text='Back', command = lambda : self.packer(self.orderDisplay,self.main) ).grid(row=0,column = 5)
 
 	def addOrder(self):
-		self.packer(self.orderDisplay, self.addOrderDisplay)
-		
+		self.orderMiniDisplay = tk.Frame(self.addOrderDisplay)
+		self.orderMiniDisplay2 = tk.Frame(self.addOrderDisplay)
+		self.addOrderDisplay.pack()
 		self.orderMiniDisplay.pack()
 		self.orderProducts = []
 		row = 2
@@ -330,7 +365,7 @@ class Main(tk.Frame):
 		tk.Label(self.orderMiniDisplay, text = 'Date').grid(row=0,column = 5)
 		tk.Entry(self.orderMiniDisplay, textvariable = self.OrderVars['date'],width = 10).grid(row=0,column = 6)
 		tk.Button(self.orderMiniDisplay,text = 'Save',command = self.saveOrder).grid(row=0,column=7)
-		tk.Button(self.orderMiniDisplay,text = 'Cancel',command = lambda: self.packer(self.addOrderDisplay,self.orderDisplay)).grid(row=0,column=8)
+		tk.Button(self.orderMiniDisplay,text = 'Cancel',command = lambda: self.packer(self.addOrderDisplay,self.orderMain)).grid(row=0,column=8)
 
 		
 		tk.Label(self.orderMiniDisplay2,text = 'ID').grid(row=1,column = 1)
@@ -350,16 +385,19 @@ class Main(tk.Frame):
 		tk.Label(self.orderMiniDisplay2,textvariable = self.mini_dict['price'],text = '').grid(row=row,column=3)
 		tk.Entry(self.orderMiniDisplay2,textvariable = qvar,width = 5).grid(row=row,column=4)
 		row += 1
-		self.addbutton = tk.Button(self.orderMiniDisplay2,text = 'Add', command=lambda: self.orderSearchID(row,self.addbutton))
+		self.addbutton = tk.Button(self.orderMiniDisplay2,text = 'Add', command=lambda: self.orderSearchID(row,self.addbutton,1))
 		self.addbutton.grid(row=row-1,column=6)
 
-	def orderSearchID(self,row,addbutton):
+	def orderSearchID(self,row,addbutton,option):
 		try:
 			product = self.products[self.orderProducts[-1][0].get()]
 			self.mini_dict['name'].set(product.name)
 			self.mini_dict['price'].set(product.price)
-			addbutton.grid_forget()
-			self.buildField(row)
+			addbutton.destroy()
+			if option == 1:
+				self.buildField(row)
+			else:
+				self.makeBuildField(row)
 		except KeyError:
 			mb.showwarning('Invalid ID', 'The ID entered is invalid')
 
@@ -369,39 +407,51 @@ class Main(tk.Frame):
 		for i in xrange(len(self.orderProducts)-1):
 			product = self.products[self.orderProducts[i][0].get()]
 			product.quantity += self.orderProducts[i][1].get()*product.case
-			products.append((self.orderProducts[i][0].get(), self.orderProducts[i][1].get()))
+			products.append((self.orderProducts[i][0].get(),product.price, self.orderProducts[i][1].get()))
 		vendor = self.OrderVars['vendor'].get()
 		idOrder = self.OrderVars['id'].get()
 		date = self.OrderVars['date'].get()
-		for (key,quant) in products:
-			product = self.products[key]
-			total += product.price*quant
+		for (key,price,quant) in products:
+			total += price*quant
 		order = Order(idNumber = idOrder, vendor = vendor, date = date, products = products,total = total)
 		self.orders[date] = order
-		if self.orderMiniDisplay2.winfo_children():
-			for child in self.orderMiniDisplay2.winfo_children():
-				child.destroy()
-		self.packer(self.addOrderDisplay, self.orderDisplay)
+		self.packer(self.addOrderDisplay, self.orderMain,option = 3)
 
 	def viewOrder(self):
-		
-		self.packer(self.orderDisplay, self.viewOrderDisplay)
-		self.viewOrderID = tk.StringVar()
-		
+		self.viewOrderDisplay1 = tk.Frame(self.viewOrderDisplay)
+		self.viewOrderDisplay3 = tk.Frame(self.viewOrderDisplay)
+		self.viewOrderDisplay2 = tk.Frame(self.viewOrderDisplay)
+		self.viewOrderDisplay.pack()
 		self.viewOrderDisplay1.pack()
-		tk.Entry(self.viewOrderDisplay1, textvariable = self.viewOrderID).grid(row=0,columnspan=2)
-		tk.Button(self.viewOrderDisplay1, text = 'Cancel',command = lambda : self.packer(self.viewOrderDisplay,self.orderDisplay)).grid(row=1,column=0)
-		tk.Button(self.viewOrderDisplay1,text = 'Search',command = self.viewOrderSearch).grid(row = 1,column = 1)
+		tk.Entry(self.viewOrderDisplay1, textvariable = self.viewOrderDate).grid(row=0,columnspan=2)
+		tk.Radiobutton(self.viewOrderDisplay1,text = 'Incoming', variable = self.viewOrderMode,value = 0).grid(row=1,column=0)
+		tk.Radiobutton(self.viewOrderDisplay1,text = 'Outgoing', variable = self.viewOrderMode,value = 1).grid(row=1,column=1)
+		tk.Button(self.viewOrderDisplay1, text = 'Cancel',command = lambda : self.packer(self.viewOrderDisplay,self.orderMain)).grid(row=2,column=0)
+		tk.Button(self.viewOrderDisplay1,text = 'Search',command = self.viewOrderSearch).grid(row = 2,column = 1)
 
 	def viewOrderSearch(self,orderID = None):
 		try:
 			if orderID:
-				order = self.orders[orderID]
+				if self.viewOrderMode.get() == 0:
+					order = self.orders[orderID]
+				else:
+					order = self.makeOrders[orderID]
+				self.viewOrderDisplay.pack()
 			else:
-				order = self.orders[self.viewOrderID.get()]
-			if self.viewOrderDisplay2.winfo_children(): 
-				for child in self.viewOrderDisplay2.winfo_children():
-					child.destroy()
+				if self.viewOrderMode.get() == 0:
+					order = self.orders[self.viewOrderDate.get()]
+				else:
+					order = self.makeOrders[self.viewOrderDate.get()]
+			try:
+				if self.viewOrderDisplay2.winfo_children(): 
+					for child in self.viewOrderDisplay2.winfo_children():
+						child.destroy()
+					for child in self.viewOrderDisplay3.winfo_children():
+						child.destroy()
+			except:
+				self.viewOrderDisplay2 = tk.Frame(self.viewOrderDisplay)
+				self.viewOrderDisplay3 = tk.Frame(self.viewOrderDisplay)
+				tk.Button(self.viewOrderDisplay3, text = 'Back',command = lambda : self.packer(self.viewOrderDisplay, self.orderHistory)).grid(row=0,column=7)
 			self.viewOrderDisplay3.pack()
 			self.viewOrderDisplay2.pack()
 			tk.Label(self.viewOrderDisplay3, text = 'ID: ').grid(row=0,column=1)
@@ -413,11 +463,11 @@ class Main(tk.Frame):
 			for i in xrange(len(self.productOptions)):
 				tk.Label(self.viewOrderDisplay2, text = self.productOptions[i]).grid(row=1, column = i)
 			row = 2
-			for (key,quant) in order.products:
+			for (key,price,quant) in order.products:
 				product = self.products[key]
 				tk.Label(self.viewOrderDisplay2, text = product.idNumber,width = 5).grid(row=row, column=0)
 				tk.Label(self.viewOrderDisplay2,text = product.name, width = 20).grid(row=row,column=1)
-				tk.Label(self.viewOrderDisplay2,text = product.price,width = 15).grid(row=row,column=2)
+				tk.Label(self.viewOrderDisplay2,text = price,width = 15).grid(row=row,column=2)
 				tk.Label(self.viewOrderDisplay2,text = product.unit,width = 5).grid(row=row,column=3)
 				tk.Label(self.viewOrderDisplay2,text = quant,width = 15).grid(row=row,column=4)
 				tk.Label(self.viewOrderDisplay2,text = product.case, width =10).grid(row=row,column=5)
@@ -427,31 +477,124 @@ class Main(tk.Frame):
 			mb.showwarning('Not Found', 'The format of the date should be dd.mm.yyyy')
 
 	def orderHistory(self):
-		self.packer(self.orderDisplay, self.orderHistoryDisplay)
+		self.orderHistoryDisplay.pack()
 		row = 1
-		tk.Label(self.orderHistoryDisplay, text = 'ID',width = 15).grid(row=0,column=1)
-		tk.Label(self.orderHistoryDisplay, text = 'Vendor',width = 15).grid(row=0,column=2)
-		tk.Label(self.orderHistoryDisplay, text = 'Date',width = 15).grid(row=0,column=3)
-		tk.Label(self.orderHistoryDisplay,text = 'Total',width = 15).grid(row=0,column=4)
-		for order in self.orders:
-			tk.Label(self.orderHistoryDisplay, text = self.orders[order].id).grid(row=row,column=1)
-			tk.Label(self.orderHistoryDisplay,text = self.orders[order].vendor).grid(row=row,column=2)
-			tk.Label(self.orderHistoryDisplay,text = self.orders[order].date).grid(row=row,column=3)
-			tk.Label(self.orderHistoryDisplay,text = self.orders[order].total).grid(row=row,column=4)
-			tk.Button(self.orderHistoryDisplay,text ='View',command = lambda order = order: self.fetchOrder(order)).grid(row=row,column=5)
-			row+=1
+		self.orderHistoryDisplay1 = tk.Frame(self.orderHistoryDisplay)
+		self.orderHistoryDisplay2 = tk.Frame(self.orderHistoryDisplay)
+		self.orderHistoryDisplay1.pack()
+		self.orderHistoryDisplay2.pack()
+		tk.Radiobutton(self.orderHistoryDisplay1,text = 'Incoming', variable = self.viewOrderMode,value = 0).grid(row=0,column=0)
+		tk.Radiobutton(self.orderHistoryDisplay1,text = 'Outgoing', variable = self.viewOrderMode,value = 1).grid(row=0,column=1)
+		tk.Button(self.orderHistoryDisplay1, text= 'Fetch',command = lambda : self.fetchHistory(row)).grid(row=1,column=1)
+		tk.Button(self.orderHistoryDisplay1,text = 'Back',command = lambda : self.packer(self.orderHistoryDisplay, self.orderMain)).grid(row=1,column=0)
+
+	def fetchHistory(self,row):
+		if self.orderHistoryDisplay2.winfo_children():
+			for child in self.orderHistoryDisplay2.winfo_children():
+				child.destroy()
+		tk.Label(self.orderHistoryDisplay2, text = 'ID',width = 15).grid(row=0,column=1)
+		tk.Label(self.orderHistoryDisplay2, text = 'Vendor',width = 15).grid(row=0,column=2)
+		tk.Label(self.orderHistoryDisplay2, text = 'Date',width = 15).grid(row=0,column=3)
+		tk.Label(self.orderHistoryDisplay2,text = 'Total',width = 15).grid(row=0,column=4)
+		if self.viewOrderMode.get() == 0:
+			for order in self.orders:
+				tk.Label(self.orderHistoryDisplay2, text = self.orders[order].id,width = 15).grid(row=row,column=1)
+				tk.Label(self.orderHistoryDisplay2,text = self.orders[order].vendor,width = 15).grid(row=row,column=2)
+				tk.Label(self.orderHistoryDisplay2,text = self.orders[order].date,width = 15).grid(row=row,column=3)
+				tk.Label(self.orderHistoryDisplay2,text = self.orders[order].total,width = 15).grid(row=row,column=4)
+				tk.Button(self.orderHistoryDisplay2,text ='View',command = lambda order = order: self.fetchOrder(order)).grid(row=row,column=5)
+				row+=1
+		else:
+			for order in self.makeOrders:
+				tk.Label(self.orderHistoryDisplay2, text = self.makeOrders[order].id,width = 15).grid(row=row,column=1)
+				tk.Label(self.orderHistoryDisplay2,text = self.makeOrders[order].vendor,width = 15).grid(row=row,column=2)
+				tk.Label(self.orderHistoryDisplay2,text = self.makeOrders[order].date,width = 15).grid(row=row,column=3)
+				tk.Label(self.orderHistoryDisplay2,text = self.makeOrders[order].total,width = 15).grid(row=row,column=4)
+				tk.Button(self.orderHistoryDisplay2,text ='View',command = lambda order = order: self.fetchOrder(order)).grid(row=row,column=5)
+				tk.Button(self.orderHistoryDisplay2,text ='Export',command = lambda order = order: self.exportOrder(order)).grid(row=row,column=6)
+				row+=1
+
+	def exportOrder(self,order):
+		order = self.makeOrders[order]
+		filename = fd.asksaveasfilename()
+		out = fpdf.FPDF(format='letter')
+		out.add_page()
+		out.set_font('Arial',size=10)
+		out.cell(200,8,'Vendor: %s' % order.vendor,ln=1,align='C')
+		out.cell(200,8,'Date: %s' % order.date,ln=1,align='C')
+		for (key,price,quant) in order.products:
+			product = self.products[key]
+			out.cell(200,8,'ID: %5s Name: %10s Price: %5.2f Quantity: %10d' % (product.idNumber, product.name, price, quant),ln=1,align='C')
+		out.output(filename)
+
 
 	def fetchOrder(self,orderID):
-		self.packer(self.orderHistoryDisplay, self.viewOrderDisplay)
-		self.viewOrderSearch(orderID)
+		self.packer(self.orderHistoryDisplay, self.viewOrderSearch, orderID = orderID )
+
+	def makeOrder(self):
+		self.makeOrderDisplay.pack()
+		self.makeOrderDisplay1 = tk.Frame(self.makeOrderDisplay)
+		self.makeOrderDisplay2 = tk.Frame(self.makeOrderDisplay)
+		self.makeOrderDisplay1.pack()
+		self.orderProducts = []
+		tk.Label(self.makeOrderDisplay1,text = 'Date').grid(row=0,column=0)
+		tk.Entry(self.makeOrderDisplay1,textvariable = self.OrderVars['date']).grid(row=0,column=1)
+		tk.Label(self.makeOrderDisplay1,text = 'Vendor').grid(row=0,column=2)
+		tk.Entry(self.makeOrderDisplay1,textvariable = self.OrderVars['vendor']).grid(row=0,column=3)
+		tk.Button(self.makeOrderDisplay1,text = 'Save',command = self.saveMakeOrder).grid(row=0,column=4)
+		tk.Button(self.makeOrderDisplay1,text = 'Cancel',command = lambda : self.packer(self.makeOrderDisplay,self.orderMain)).grid(row=0,column=5)
+		row = 2
+		tk.Label(self.makeOrderDisplay2,text = 'ID',width = 5).grid(row=1,column = 1)
+		tk.Label(self.makeOrderDisplay2,text = 'Name',width = 50).grid(row=1,column = 2)
+		tk.Label(self.makeOrderDisplay2,text = 'Price',width = 10).grid(row=1,column = 3)
+		tk.Label(self.makeOrderDisplay2,text = 'Case').grid(row=1,column = 4)
+		self.makeBuildField(row)
+
+	def makeBuildField(self,row):
+		idvar = tk.IntVar()
+		qvar= tk.IntVar()
+		self.orderProducts.append((idvar,qvar))
+		self.makeOrderDisplay2.pack()
+		self.mini_dict = {'name':tk.StringVar(), 'price':tk.StringVar()}
+		tk.Entry(self.makeOrderDisplay2,textvariable = idvar,width = 5).grid(row= row,column = 1)
+		tk.Label(self.makeOrderDisplay2, textvariable = self.mini_dict['name'],text = '').grid(row=row, column=2)
+		tk.Label(self.makeOrderDisplay2,textvariable = self.mini_dict['price'],text = '').grid(row=row,column=3)
+		tk.Entry(self.makeOrderDisplay2,textvariable = qvar,width = 5).grid(row=row,column=4)
+		row += 1
+		self.addbutton1 = tk.Button(self.makeOrderDisplay2,text = 'Add', command=lambda: self.orderSearchID(row,self.addbutton1,2))
+		self.addbutton1.grid(row=row-1,column=6)
+
+	def saveMakeOrder(self):
+		products = []
+		total = 0
+		for i in xrange(len(self.orderProducts)-1):
+			product = self.products[self.orderProducts[i][0].get()]
+			products.append((self.orderProducts[i][0].get(),product.price, self.orderProducts[i][1].get()))
+		vendor = self.OrderVars['vendor'].get()
+		date = self.OrderVars['date'].get()
+		for (key,price,quant) in products:
+			total += price*quant
+		order = Order(vendor = vendor, date = date, products = products,total = total)
+		self.makeOrders[date] = order
+		self.packer(self.makeOrderDisplay, self.orderMain,option = 3)
+		
+		
 
 	'''REPORTS'''
 
+	def mainReports(self):
+		self.reportsDisplay.pack()
+		tk.Button(self.reportsDisplay, text='Iventory', command = lambda: self.packer(self.reportsDisplay,self.inventoryShow) ).grid(row=0,column = 0)
+		tk.Button(self.reportsDisplay, text='Counting Inventory', command = self.exportCountingInventory ).grid(row=0,column = 1)
+		tk.Button(self.reportsDisplay, text='Product History', command = lambda : mb.showwarning('Not Implemented','Service not implemented yet') ).grid(row=0,column = 2)
+		tk.Button(self.reportsDisplay, text='Back', command = lambda : self.packer(self.reportsDisplay,self.main) ).grid(row=0,column = 3)
+
 	def inventoryShow(self):
-		self.packer(self.reportsDisplay,self.inventoryDisplay)
+		self.inventoryDisplay.pack()
 		column = 0
 		row=2
-		tk.Button(self.inventoryDisplay,text = 'Back',command = lambda : self.packer(self.inventoryDisplay,self.reportsDisplay)).grid(row=0,column=0)
+		tk.Button(self.inventoryDisplay,text = 'Back',command = lambda : self.packer(self.inventoryDisplay,self.mainReports)).grid(row=0,column=0)
+		tk.Button(self.inventoryDisplay,text = 'Export',command  = self.exportInventory).grid(row=0,column=1)
 		for item in self.productOptions:
 			tk.Label(self.inventoryDisplay, text = item).grid(row=1,column=column)
 			column+=1
@@ -464,7 +607,117 @@ class Main(tk.Frame):
 			tk.Label(self.inventoryDisplay,text = product.case,width = 10).grid(row=row,column=5)
 			row+=1
 
-	
+	def exportInventory(self):
+		out = fpdf.FPDF(format='Letter')
+		filename = fd.asksaveasfilename(defaultextension = '.pdf')
+		out.add_page()
+		out.set_font('Arial',size=20)
+		out.cell(200,10,'Inventory',ln=1,align='C')
+		out.set_font('Arial',size=10)
+		for product in self.products.values():
+			out.cell(200,10,'ID: %5d Name: %10s Price: %5.2f Unit: %5s Quantity: %10d Case: %5d' % (product.idNumber, product.name, product.price, product.unit, product.quantity, product.case),ln=1,align='C')
+		out.output(filename)
+
+	def exportCountingInventory(self):
+		out = fpdf.FPDF(format='Letter')
+		filename = fd.asksaveasfilename(defaultextension = '.pdf')
+		out.add_page()
+		out.set_font('Arial',size=20)
+		out.cell(200,10,'Counting Inventory',ln=1,align='C')
+		out.set_font('Arial',size=10)
+		for product in self.products.values():
+			out.cell(200,10,'ID: %5d Name: %10s Cases: _________ Units: _________ ' % (product.idNumber, product.name),ln=1,align='C')
+		out.output(filename)
+
+	''' Vendors '''
+
+	def vendorShow(self):
+		self.vendorDisplay.pack()
+		tk.Button(self.vendorDisplay, text = 'Add Vendor',command = lambda: self.packer(self.vendorDisplay, self.addVendor)).grid(row=0,column=0)
+		tk.Button(self.vendorDisplay, text = 'Delete Vendor',command =lambda: self.packer(self.vendorDisplay, self.deleteVendor)).grid(row=0,column=1)
+		tk.Button(self.vendorDisplay, text = 'View Vendor',command =lambda: self.packer(self.vendorDisplay, self.viewVendor)).grid(row=0,column=2)
+		tk.Button(self.vendorDisplay, text = 'All Vendors',command = lambda: self.packer(self.vendorDisplay, self.allVendors)).grid(row=0,column=3)
+		tk.Button(self.vendorDisplay, text = 'Back',command = lambda : self.packer(self.vendorDisplay,self.orderMain)).grid(row=0,column=4)
+		#ttk.Combobox(self.vendorDisplay, values = self.vendors.values()).grid(row=0,columnspan=2)
+
+	def addVendor(self):
+		self.addVendorDisplay.pack()
+		tk.Label(self.addVendorDisplay,text = 'Name').grid(row=0,column=0)
+		tk.Entry(self.addVendorDisplay,textvariable = self.vendorVars['name']).grid(row=0,column=1)
+		tk.Label(self.addVendorDisplay,text = 'Address').grid(row=1,column=0)
+		tk.Entry(self.addVendorDisplay,textvariable = self.vendorVars['address']).grid(row=1,column=1)
+		tk.Label(self.addVendorDisplay,text = 'ID').grid(row=2,column=0)
+		tk.Entry(self.addVendorDisplay,textvariable = self.vendorVars['id']).grid(row=2,column=1)
+		tk.Button(self.addVendorDisplay,text = 'Cancel',command = lambda: self.packer(self.addVendorDisplay,self.vendorShow)).grid(row=3,column=0)
+		tk.Button(self.addVendorDisplay,text = 'Save',command =self.saveVendor).grid(row=3,column=1)
+
+	def saveVendor(self):
+		try:
+			name = self.vendorVars['name'].get()
+			address = self.vendorVars['address'].get()
+			idd = self.vendorVars['id'].get()
+			self.clearVars(2)
+			if idd in self.vendors:
+				mb.showwarning('ID already exists', 'The chosen id already exists')
+			else:
+				self.vendors[idd] = Vendor(name = name, address = address, idNumber = idd)
+				self.packer(self.addVendorDisplay,self.vendorShow)
+		except ValueError:
+			mb.showwarning('Invalid ID','ID must be a number')
+			
+
+	def deleteVendor(self):
+		self.deleteVendorDisplay.pack()
+		tk.Entry(self.deleteVendorDisplay,textvariable = self.vendorID).grid(row=0,columnspan=2)
+		tk.Button(self.deleteVendorDisplay,text = 'Back',command = lambda : self.packer(self.deleteVendorDisplay,self.vendorShow)).grid(row=1,column=0)
+		tk.Button(self.deleteVendorDisplay,text = 'Delete',command = self.deleteVendorID).grid(row=1,column=1)
+		''' i have to figure out what to do with remaining orders from deleted vendors'''
+
+	def deleteVendorID(self):
+		try:
+			del self.vendors[self.vendorID.get()]
+			self.packer(self.deleteVendorDisplay,self.vendorShow)
+			self.vendorID.set('')
+		except KeyError:
+			mb.showwarning('Not Found', 'No vendor with that ID')
+
+
+	def viewVendor(self):
+		self.viewVendorDisplay1 = tk.Frame(self.viewVendorDisplay)
+		self.viewVendorDisplay2 = tk.Frame(self.viewVendorDisplay)
+		self.viewVendorDisplay.pack()
+		self.viewVendorDisplay1.pack()
+		tk.Entry(self.viewVendorDisplay1,textvariable = self.vendorID).grid(row=0,columnspan=2)
+		tk.Button(self.viewVendorDisplay1,text = 'Back',command = lambda: self.packer(self.viewVendorDisplay,self.vendorShow)).grid(row=1,column=0)
+		tk.Button(self.viewVendorDisplay1,text = 'Search',command = self.searchVendorID).grid(row=1,column=1)
+
+	def searchVendorID(self):
+		if self.viewVendorDisplay2.winfo_children():
+			for child in self.viewVendorDisplay2.winfo_children():
+				child.destroy()
+		self.viewVendorDisplay2.pack()
+		tk.Label(self.viewVendorDisplay2,text = 'ID',width = 5).grid(row=0,column=0)
+		tk.Label(self.viewVendorDisplay2,text = 'Name',width = 15).grid(row=0,column=1)
+		tk.Label(self.viewVendorDisplay2,text = 'Address',width = 20).grid(row=0,column=2)
+		vendor = self.vendors[self.vendorID.get()]
+		tk.Label(self.viewVendorDisplay2,text = vendor.idNumber).grid(row=1,column=0)
+		tk.Label(self.viewVendorDisplay2,text = vendor.name).grid(row=1,column=1)
+		tk.Label(self.viewVendorDisplay2,text = vendor.address).grid(row=1,column=2)
+		
+
+	def allVendors(self):
+		self.viewVendorAll.pack()
+		tk.Button(self.viewVendorAll,text = 'Back',command = lambda : self.packer(self.viewVendorAll,self.vendorShow)).grid(row=0,column=0)
+		tk.Label(self.viewVendorAll,text = 'ID',width = 5).grid(row=1,column=0)
+		tk.Label(self.viewVendorAll,text = 'Name',width = 15).grid(row=1,column=1)
+		tk.Label(self.viewVendorAll,text = 'Address',width = 20).grid(row=1,column=2)
+		row = 2
+		for vendor in self.vendors:
+			tk.Label(self.viewVendorAll,text = self.vendors[vendor].idNumber).grid(row=row,column=0)
+			tk.Label(self.viewVendorAll,text = self.vendors[vendor].name).grid(row=row,column=1)
+			tk.Label(self.viewVendorAll,text = self.vendors[vendor].address).grid(row=row,column=2)
+			row+=1
+
 
 if __name__=='__main__':
 	p = Main('database')
